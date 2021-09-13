@@ -1,9 +1,9 @@
-#(©)Codexbotz
+#(©)xH4X0Rx
 import os
 import asyncio
 from pyrogram import Client, filters, __version__
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.errors import FloodWait
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated
 
 from bot import Bot
 from config import ADMINS, FORCE_MSG, START_MSG, OWNER_ID, CUSTOM_CAPTION, DISABLE_CHANNEL_BUTTON
@@ -14,7 +14,7 @@ from database.sql import add_user, query_msg
 
 #=====================================================================================##
 
-USERS_LIST = """<b>#️⃣Total:</b>\n\n✅Subscribers - {}\n⛔Blocked- {}"""
+
 
 WAIT_MSG = """"<b>Processing ...</b>"""
 
@@ -112,7 +112,25 @@ async def start_command(client: Client, message: Message):
 
 @Bot.on_message(filters.command('start') & filters.private)
 async def not_joined(client: Client, message: Message):
-    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("Join Channel", url = client.invitelink)]])
+    buttons = [
+        [
+            InlineKeyboardButton(
+                "Join Channel",
+                url = client.invitelink)
+        ]
+    ]
+    try:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text = 'Try Again',
+                    url = f"https://t.me/{client.username}?start={message.command[1]}"
+                )
+            ]
+        )
+    except IndexError:
+        pass
+
     await message.reply(
         text = FORCE_MSG.format(
                 first = message.from_user.first_name,
@@ -121,7 +139,7 @@ async def not_joined(client: Client, message: Message):
                 mention = message.from_user.mention,
                 id = message.from_user.id
             ),
-        reply_markup = reply_markup,
+        reply_markup = InlineKeyboardMarkup(buttons),
         quote = True,
         disable_web_page_preview = True
     )
@@ -139,29 +157,47 @@ async def subscribers_count(bot, m: Message):
     await msg.edit(USERS_LIST.format(active, blocked))
 
 
-
-@Bot.on_message(filters.private & filters.command('broadcast'))
-async def send_text(bot, m: Message):
-    id = m.from_user.id
-    if id not in ADMINS:
-        return
-    if (" " not in m.text) and ("broadcast" in m.text) and (m.reply_to_message is not None):
+@Bot.on_message(filters.private & filters.command('broadcast') & filters.user(ADMINS))
+async def send_text(client: Bot, message: Message):
+    if message.reply_to_message:
         query = await query_msg()
+        broadcast_msg = message.reply_to_message
+        total = 0
+        successful = 0
+        blocked = 0
+        deleted = 0
+        unsuccessful = 0
+        
+        pls_wait = await message.reply("<i>Broadcasting Message.. This will Take Some Time</i>")
         for row in query:
             chat_id = int(row[0])
             try:
-                await bot.copy_message(
-                    chat_id=chat_id,
-                    from_chat_id=m.chat.id,
-                    message_id=m.reply_to_message.message_id,
-                    caption=m.caption,
-                    reply_markup=m.reply_markup
-                )
+                await broadcast_msg.copy(chat_id)
+                successful += 1
             except FloodWait as e:
                 await asyncio.sleep(e.x)
-            except Exception:
+                await broadcast_msg.copy(chat_id)
+                successful += 1
+            except UserIsBlocked:
+                blocked += 1
+            except InputUserDeactivated:
+                deleted += 1
+            except:
+                unsuccessful += 1
                 pass
+            total += 1
+        
+        status = f"""<b><u>Broadcast Completed</u>
+
+Total Users: <code>{total}</code>
+Successful: <code>{successful}</code>
+Blocked Users: <code>{blocked}</code>
+Deleted Accounts: <code>{deleted}</code>
+Unsuccessful: <code>{unsuccessful}</code></b>"""
+        
+        return await pls_wait.edit(status)
+
     else:
-        msg = await m.reply_text(REPLY_ERROR, m.message_id)
+        msg = await message.reply(REPLY_ERROR)
         await asyncio.sleep(8)
         await msg.delete()
