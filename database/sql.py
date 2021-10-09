@@ -4,8 +4,9 @@ import threading
 from sqlalchemy import create_engine
 from sqlalchemy import Column, TEXT, Numeric
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, scoped_session
 from config import DB_URI
+from sqlalchemy.orm import sessionmaker, scoped_session
+
 
 def start() -> scoped_session:
     engine = create_engine(DB_URI, client_encoding="utf8")
